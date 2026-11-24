@@ -1,6 +1,11 @@
-# syntax=docker/dockerfile:1
+# Pulled through a Docker Hub mirror. Override with build-arg RUST_IMAGE / DEBIAN_IMAGE.
+ARG RUST_IMAGE=docker.m.daocloud.io/library/rust:1-bookworm
+ARG DEBIAN_IMAGE=docker.m.daocloud.io/library/debian:bookworm-slim
 
-FROM rust:1-bookworm AS builder
+FROM ${RUST_IMAGE} AS builder
+
+RUN if [ -f /etc/apt/sources.list ]; then sed -i 's|deb.debian.org|mirrors.aliyun.com|g; s|security.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list; fi \
+    && if [ -f /etc/apt/sources.list.d/debian.sources ]; then sed -i 's|deb.debian.org|mirrors.aliyun.com|g; s|security.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources; fi
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
@@ -35,6 +40,14 @@ RUN test -f libs/hbb_common/Cargo.toml || (echo "missing submodule: git submodul
 
 # sqlx query! checks this schema at compile time. The running server uses DB_URL, not DATABASE_URL.
 ENV DATABASE_URL=sqlite:///src/db_v2.sqlite3
+RUN mkdir -p /usr/local/cargo \
+    && printf '%s\n' \
+        '[source.crates-io]' \
+        'replace-with = "aliyun"' \
+        '' \
+        '[source.aliyun]' \
+        'registry = "sparse+https://mirrors.aliyun.com/crates.io/index/"' \
+        >> /usr/local/cargo/config.toml
 RUN sqlite3 /src/db_v2.sqlite3 "CREATE TABLE IF NOT EXISTS peer (guid BLOB PRIMARY KEY NOT NULL, id VARCHAR(100) NOT NULL, uuid BLOB NOT NULL, pk BLOB NOT NULL, created_at DATETIME NOT NULL DEFAULT(CURRENT_TIMESTAMP), user BLOB, status TINYINT, note VARCHAR(300), info TEXT NOT NULL) WITHOUT ROWID;"
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
@@ -44,7 +57,10 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     && mkdir -p /out \
     && cp /src/target/release/hbbs /src/target/release/hbbr /out/
 
-FROM debian:bookworm-slim
+FROM ${DEBIAN_IMAGE}
+
+RUN if [ -f /etc/apt/sources.list ]; then sed -i 's|deb.debian.org|mirrors.aliyun.com|g; s|security.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list; fi \
+    && if [ -f /etc/apt/sources.list.d/debian.sources ]; then sed -i 's|deb.debian.org|mirrors.aliyun.com|g; s|security.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources; fi
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \

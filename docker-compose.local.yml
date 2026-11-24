@@ -16,6 +16,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.local
+      args:
+        RUST_IMAGE: docker.m.daocloud.io/library/rust:1-bookworm
+        DEBIAN_IMAGE: docker.m.daocloud.io/library/debian:bookworm-slim
     command: ["hbbs", "-r", "${RELAY:-rustdesk.example.com:21117}"]
     environment:
       RUST_LOG: info
