@@ -69,7 +69,11 @@ RUN sed -i \
         -e 's|sysinfo = { git = "https://github.com/rustdesk-org/sysinfo", branch = "rlim_max" }|sysinfo = { path = "../../third_party/sysinfo" }|' \
         -e 's|default_net = { git = "https://github.com/rustdesk-org/default_net" }|default_net = { path = "../../third_party/default_net" }|' \
         -e 's|machine-uid = { git = "https://github.com/rustdesk-org/machine-uid" }|machine-uid = { path = "../../third_party/machine-uid" }|' \
-        libs/hbb_common/Cargo.toml
+        libs/hbb_common/Cargo.toml \
+    && sed -i 's|read-initializer = \["futures-io/unstable", "futures-io/read-initializer"\]|read-initializer = []|' \
+        third_party/async-speed-limit/Cargo.toml \
+    && sed -i '/feature(read_initializer)/d' third_party/async-speed-limit/src/lib.rs \
+    && sed -i 's|#\[cfg(feature = "read-initializer")\]|#[cfg(any())]|' third_party/async-speed-limit/src/io.rs
 
 # sqlx query! checks this schema at compile time. The running server uses DB_URL, not DATABASE_URL.
 ENV DATABASE_URL=sqlite:///src/db_v2.sqlite3
@@ -85,7 +89,7 @@ RUN sqlite3 /src/db_v2.sqlite3 "CREATE TABLE IF NOT EXISTS peer (guid BLOB PRIMA
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/src/target \
-    cargo build --release --all-features \
+    cargo build --release --bin hbbs --bin hbbr \
     && mkdir -p /out \
     && cp /src/target/release/hbbs /src/target/release/hbbr /out/
 
