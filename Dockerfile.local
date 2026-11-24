@@ -36,18 +36,40 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /src
 COPY . .
 
-RUN test -f libs/hbb_common/Cargo.toml || (echo "missing submodule: git submodule update --init --recursive" && exit 1)
+# libs/hbb_common is a git submodule (69cea8dafee147848ae88702029f4bf7df7224c3) and is not in the image context until it is checked out.
+RUN if [ ! -f libs/hbb_common/Cargo.toml ]; then \
+      rev=69cea8dafee147848ae88702029f4bf7df7224c3; \
+      ok=0; \
+      for url in \
+        https://github.com/rustdesk/hbb_common.git \
+        https://kkgithub.com/rustdesk/hbb_common.git \
+        https://ghfast.top/https://github.com/rustdesk/hbb_common.git; \
+      do \
+        echo "fetch hbb_common from $url"; \
+        rm -rf libs/hbb_common; \
+        git init libs/hbb_common \
+          && git -C libs/hbb_common remote add origin "$url" \
+          && git -C libs/hbb_common fetch --depth 1 origin "$rev" \
+          && git -C libs/hbb_common checkout --detach FETCH_HEAD \
+          && ok=1 && break; \
+      done; \
+      test "$ok" = 1; \
+    fi
 
 # sqlx query! checks this schema at compile time. The running server uses DB_URL, not DATABASE_URL.
 ENV DATABASE_URL=sqlite:///src/db_v2.sqlite3
-RUN mkdir -p /usr/local/cargo \
-    && printf '%s\n' \
+ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
+RUN printf '%s\n' \
+        '[net]' \
+        'git-fetch-with-cli = true' \
+        '' \
         '[source.crates-io]' \
         'replace-with = "aliyun"' \
         '' \
         '[source.aliyun]' \
-        'registry = "sparse+https://mirrors.aliyun.com/crates.io/index/"' \
-        >> /usr/local/cargo/config.toml
+        'registry = "sparse+https://mirrors.aliyun.com/crates.io-index/"' \
+        > /usr/local/cargo/config.toml \
+    && git config --global url."https://kkgithub.com/".insteadOf "https://github.com/"
 RUN sqlite3 /src/db_v2.sqlite3 "CREATE TABLE IF NOT EXISTS peer (guid BLOB PRIMARY KEY NOT NULL, id VARCHAR(100) NOT NULL, uuid BLOB NOT NULL, pk BLOB NOT NULL, created_at DATETIME NOT NULL DEFAULT(CURRENT_TIMESTAMP), user BLOB, status TINYINT, note VARCHAR(300), info TEXT NOT NULL) WITHOUT ROWID;"
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
