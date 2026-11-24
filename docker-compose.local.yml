@@ -1,0 +1,49 @@
+# Local source build. Does not pull rustdesk/rustdesk-server.
+# First start:
+#   docker compose -f docker-compose.local.yml up -d --build
+# Public relay address clients should use. Put this in the project .env:
+#   RELAY=your.domain.or.ip:21117
+
+networks:
+  rustdesk-net:
+    external: false
+
+services:
+  hbbs:
+    container_name: hbbs
+    image: rustdesk-server:local
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+    command: ["hbbs", "-r", "${RELAY:-rustdesk.example.com:21117}"]
+    environment:
+      RUST_LOG: info
+    ports:
+      - "21115:21115"
+      - "21116:21116"
+      - "21116:21116/udp"
+      - "21118:21118"
+    volumes:
+      - ./data:/root
+    networks:
+      - rustdesk-net
+    depends_on:
+      - hbbr
+    restart: unless-stopped
+
+  hbbr:
+    container_name: hbbr
+    image: rustdesk-server:local
+    pull_policy: never
+    command: ["hbbr"]
+    environment:
+      RUST_LOG: info
+    ports:
+      - "21117:21117"
+      - "21119:21119"
+    volumes:
+      - ./data:/root
+    networks:
+      - rustdesk-net
+    restart: unless-stopped
