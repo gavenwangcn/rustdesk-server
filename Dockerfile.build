@@ -1,0 +1,73 @@
+# Build on a machine that can reach Docker Hub, GitHub, and crates.io.
+# The 2C2G server only pulls the finished image.
+FROM rust:1-bookworm AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        git \
+        pkg-config \
+        autoconf \
+        automake \
+        libtool \
+        m4 \
+        sqlite3 \
+        libsqlite3-dev \
+        libx11-dev \
+        libxext-dev \
+        libxft-dev \
+        libxinerama-dev \
+        libxcursor-dev \
+        libxrandr-dev \
+        libxrender-dev \
+        libxi-dev \
+        libxtst-dev \
+        libxss-dev \
+        libxpresent-dev \
+        libwayland-dev \
+        libxkbcommon-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+COPY . .
+
+RUN test -f libs/hbb_common/Cargo.toml || { echo "missing libs/hbb_common; clone with --recurse-submodules"; exit 1; }
+
+# sqlx query! checks this schema at compile time. The running server uses DB_URL, not DATABASE_URL.
+ENV DATABASE_URL=sqlite:///src/db_v2.sqlite3
+RUN sqlite3 /src/db_v2.sqlite3 "CREATE TABLE IF NOT EXISTS peer (guid BLOB PRIMARY KEY NOT NULL, id VARCHAR(100) NOT NULL, uuid BLOB NOT NULL, pk BLOB NOT NULL, created_at DATETIME NOT NULL DEFAULT(CURRENT_TIMESTAMP), user BLOB, status TINYINT, note VARCHAR(300), info TEXT NOT NULL) WITHOUT ROWID;"
+
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/src/target \
+    cargo build --locked --release --bin hbbs --bin hbbr \
+    && mkdir -p /out \
+    && cp /src/target/release/hbbs /src/target/release/hbbr /out/
+
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        libsqlite3-0 \
+        libx11-6 \
+        libxext6 \
+        libxft2 \
+        libxinerama1 \
+        libxcursor1 \
+        libxrandr2 \
+        libxrender1 \
+        libxi6 \
+        libxtst6 \
+        libxss1 \
+        libxpresent1 \
+        libwayland-client0 \
+        libwayland-cursor0 \
+        libwayland-egl1 \
+        libxkbcommon0 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /out/hbbs /usr/bin/hbbs
+COPY --from=builder /out/hbbr /usr/bin/hbbr
+
+WORKDIR /root
+ENV HOME=/root

@@ -74,7 +74,17 @@ RUN sed -i \
         third_party/async-speed-limit/Cargo.toml \
     && sed -i '/feature(read_initializer)/d' third_party/async-speed-limit/src/lib.rs \
     && sed -i 's|#\[cfg(feature = "read-initializer")\]|#[cfg(any())]|' third_party/async-speed-limit/src/io.rs \
-    && sed -i '/^source = "git+/d' Cargo.lock
+    && printf '\ned25519 = { path = "third_party/ed25519" }\n' >> Cargo.toml
+
+# crates.io ed25519 1.5.0 depends on signature >=1.3.1, which also matches 2.x.
+# signature 2.x drops the trait this crate implements. Pin the 1.5.0 pair from Cargo.lock.
+RUN if ! command -v curl >/dev/null 2>&1; then apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*; fi \
+    && curl -fL "https://mirrors.aliyun.com/crates/api/v1/crates/ed25519/1.5.0/download" -o /tmp/ed25519-1.5.0.crate \
+    && mkdir -p /tmp/ed25519 \
+    && tar -xzf /tmp/ed25519-1.5.0.crate -C /tmp/ed25519 \
+    && mv /tmp/ed25519/ed25519-1.5.0 /src/third_party/ed25519 \
+    && sed -i 's|^version = ">=1.3.1"|version = "=1.5.0"|' /src/third_party/ed25519/Cargo.toml \
+    && rm -rf /tmp/ed25519 /tmp/ed25519-1.5.0.crate
 
 # sqlx query! checks this schema at compile time. The running server uses DB_URL, not DATABASE_URL.
 ENV DATABASE_URL=sqlite:///src/db_v2.sqlite3
@@ -90,7 +100,7 @@ RUN sqlite3 /src/db_v2.sqlite3 "CREATE TABLE IF NOT EXISTS peer (guid BLOB PRIMA
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/src/target \
-    cargo build --locked --release --bin hbbs --bin hbbr \
+    cargo build --release --bin hbbs --bin hbbr \
     && mkdir -p /out \
     && cp /src/target/release/hbbs /src/target/release/hbbr /out/
 

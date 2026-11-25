@@ -1,0 +1,45 @@
+# Run a prebuilt image. No compile step on the server.
+# Server .env:
+#   RUSTDESK_IMAGE=registry.cn-beijing.aliyuncs.com/<namespace>/rustdesk-server:1.1.17
+#   RELAY=39.106.212.80:21117
+
+networks:
+  rustdesk-net:
+    external: false
+
+services:
+  hbbs:
+    container_name: hbbs
+    image: ${RUSTDESK_IMAGE:?set RUSTDESK_IMAGE in .env}
+    pull_policy: always
+    command: ["hbbs", "-r", "${RELAY:-rustdesk.example.com:21117}"]
+    environment:
+      RUST_LOG: info
+    ports:
+      - "21115:21115"
+      - "21116:21116"
+      - "21116:21116/udp"
+      - "21118:21118"
+    volumes:
+      - ./data:/root
+    networks:
+      - rustdesk-net
+    depends_on:
+      - hbbr
+    restart: unless-stopped
+
+  hbbr:
+    container_name: hbbr
+    image: ${RUSTDESK_IMAGE:?set RUSTDESK_IMAGE in .env}
+    pull_policy: always
+    command: ["hbbr"]
+    environment:
+      RUST_LOG: info
+    ports:
+      - "21117:21117"
+      - "21119:21119"
+    volumes:
+      - ./data:/root
+    networks:
+      - rustdesk-net
+    restart: unless-stopped
